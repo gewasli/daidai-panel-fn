@@ -1,0 +1,56 @@
+#!/bin/sh
+# daidai-panel-fn 生命周期入口
+#
+# Docker 项目由 fnOS 应用中心触发 start/stop。
+# TRIM_APPDEST 指向安装后的应用目录（/var/apps 内由系统分配，进程取其环境变量）。
+# 服务托管在 app/docker/docker-compose.yaml 里（独立于现有 daidai 面板）。
+
+set -u
+
+APP_ROOT="${TRIM_APPDEST:-}"
+if [ -z "$APP_ROOT" ]; then
+  echo "ERROR: TRIM_APPDEST is not set; the application directory was not provided." >&2
+  exit 1
+fi
+
+DOCKER_DIR="$APP_ROOT/app/docker"
+COMPOSE_FILE="$DOCKER_DIR/docker-compose.yaml"
+
+usage() {
+  echo "usage: $0 {start|stop|status}" >&2
+}
+
+cmd_start() {
+  if [ ! -f "$COMPOSE_FILE" ]; then
+    echo "ERROR: missing docker-compose.yaml ($COMPOSE_FILE)" >&2
+    exit 1
+  fi
+  mkdir -p "$APP_ROOT/data"
+
+  # 外部镜像按 ENV IMAGE_NAME 拉取/重建；必须 root 运行（见 README）
+  ( cd "$DOCKER_DIR" && export PANEL_PORT=5701 && docker compose up -d )
+}
+
+cmd_stop() {
+  ( cd "$DOCKER_DIR" && docker compose down )
+}
+
+cmd_status() {
+  if [ ! -f "$COMPOSE_FILE" ]; then
+    exit 3
+  fi
+  if ( cd "$DOCKER_DIR" && docker compose ps --services --filter "status=running" 2>/dev/null | grep -qx "daidai-panel" ); then
+    exit 0
+  fi
+  exit 3
+}
+
+case "${1:-}" in
+  start)  cmd_start ;;
+  stop)   cmd_stop ;;
+  status) cmd_status ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

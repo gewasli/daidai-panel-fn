@@ -1,0 +1,17 @@
+appname=daidai-panel-fn
+version=1.0.0
+display_name=呆呆面板
+desc=在飞牛 fnOS 上以 Docker 方式部署呆呆面板（Go+Vue3+SQLite），独立容器与数据，内部分更新不影响现有面板。
+source=thirdparty
+platform=all
+maintainer=呆呆面板 fnOS 维护者
+maintainer_url=https://github.com/{用户名}/daidai-panel-fn
+distributor=daidai-panel-fn
+distributor_url=https://github.com/{用户名}/daidai-panel-fn
+os_min_version=1.2.0401
+install_dep_apps=
+desktop_uidir=ui
+desktop_applaunchname=daidai-panel-fn.main
+ctl_stop=true
+checkport=false
+micro_app=false

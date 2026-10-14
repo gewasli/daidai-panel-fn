@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# 构建 daidai-panel-fn 的 fnOS 应用包（.fpk）。
+#
+# 输出：dist/daidai-panel-fn-{version}.fpk（用于 GitHub Release 与 fndepot 源）
+# 行为：
+#   - 拉取 manifest 里的 version（默认 1.0.0）
+#   - 如设置 BUILD_VERSION 则覆写 manifest 的 version
+#   - 打包整个项目目录成一个 .fpk（fnOS fndepot 接受的 app 包格式）
+
+set -euo pipefail
+cd "$(dirname "$0")"
+
+VERSION="${BUILD_VERSION:-1.0.0}"
+if [[ -z "${BUILD_VERSION:-}" ]]; then
+  VERSION="$(grep -E '^version=' manifest | head -n1 | cut -d= -f2-)"
+fi
+
+if [[ -n "${BUILD_VERSION:-}" ]] && [[ "${BUILD_VERSION}" != "${VERSION}" ]]; then
+  sed -i "s/^version=.*/version=${BUILD_VERSION}/" manifest
+fi
+
+WORK="dist/daidai-panel-fn-${VERSION}"
+rm -rf "${WORK}"
+cp -a . "${WORK}"
+find "${WORK}" -type f \( -name '*.pyc' -o -name '.DS_Store' \) -delete
+
+fpk="dist/daidai-panel-fn-${VERSION}.fpk"
+rm -f "${fpk}"
+
+python3 - "${WORK}" "${fpk}" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+src = pathlib.Path(sys.argv[1])
+out = pathlib.Path(sys.argv[2])
+
+if out.exists():
+    out.unlink()
+
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for p in sorted(src.rglob('*')):
+        arc = p.relative_to(src)
+        if p.is_dir():
+            z.writestr(arc / "", b"")
+        else:
+            z.writestr(arc, p.read_bytes())
+
+print("wrote", out)
+PY
+
+ls -l "${fpk}"

@@ -1,0 +1,10 @@
+{
+  "docker-project": {
+    "projects": [
+      {
+        "name": "daidai-panel-fn",
+        "path": "docker"
+      }
+    ]
+  }
+}
