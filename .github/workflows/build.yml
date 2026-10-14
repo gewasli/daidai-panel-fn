@@ -1,0 +1,83 @@
+name: Build daidai-panel-fn .fpk
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*.*.*' ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '发布版本号（如 1.0.0）'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  issues: write
+  packages: read
+
+env:
+  FPK_NAME: daidai-panel-fn
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.setver.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set version
+        id: setver
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "VERSION=${{ github.event.inputs.version }}" >> "$GITHUB_ENV"
+          elif [[ ${{ github.ref_type == 'tag' && github.ref_name } == v* ]]; then
+            V="${{ github.ref_name }}"
+            echo "version=${V#v}" >> "$GITHUB_OUTPUT"
+            echo "VERSION=${{ github.ref_name }}" >> "$GITHUB_ENV"
+          else
+            VERSION=$(grep -E '^version=' manifest | head -n1 | cut -d= -f2-)
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          fi
+          echo "Using version=$VERSION"
+
+      - name: Build .fpk
+        run: BUILD_VERSION="${{ env.VERSION }}" bash build.sh
+
+      - name: Upload artifact
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.FPK_NAME }}.fpk
+          path: dist/daidai-panel-fn-${{ env.VERSION }}.fpk
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.FPK_NAME }}.fpk
+          path: dist
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "daidai-panel-fn ${{ github.ref_name }}" \
+            --generate-notes \
+            "dist/${{ env.FPK_NAME }}-${{ needs.build.outputs.version }}.fpk"
+
+      - name: Upload Release asset
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            "dist/${{ env.FPK_NAME }}-${{ needs.build.outputs.version }}.fpk"
