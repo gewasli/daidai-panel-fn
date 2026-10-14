@@ -10,6 +10,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+mkdir -p dist
+
 VERSION="${BUILD_VERSION:-1.0.0}"
 if [[ -z "${BUILD_VERSION:-}" ]]; then
   VERSION="$(grep -E '^version=' manifest | head -n1 | cut -d= -f2-)"
@@ -21,8 +23,29 @@ fi
 
 WORK="dist/daidai-panel-fn-${VERSION}"
 rm -rf "${WORK}"
-cp -a . "${WORK}"
-find "${WORK}" -type f \( -name '*.pyc' -o -name '.DS_Store' \) -delete
+mkdir -p "${WORK}"
+
+python3 - "${WORK}" <<'PY'
+import pathlib
+import shutil
+import sys
+
+work = pathlib.Path(sys.argv[1])
+root = pathlib.Path.cwd()
+
+for entry in sorted(root.iterdir()):
+    if entry.name == 'dist':
+        continue
+    if entry.is_dir():
+        shutil.copytree(entry, work / entry.name)
+    else:
+        shutil.copy2(entry, work / entry.name)
+
+for junk in work.rglob('*.pyc'):
+    junk.unlink()
+for junk in work.rglob('.DS_Store'):
+    junk.unlink()
+PY
 
 fpk="dist/daidai-panel-fn-${VERSION}.fpk"
 rm -f "${fpk}"
@@ -40,9 +63,9 @@ if out.exists():
 
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     for p in sorted(src.rglob('*')):
-        arc = p.relative_to(src)
+        arc = str(p.relative_to(src))
         if p.is_dir():
-            z.writestr(arc / "", b"")
+            z.writestr(arc + "/", b"")
         else:
             z.writestr(arc, p.read_bytes())
 
