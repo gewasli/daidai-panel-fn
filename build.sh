@@ -33,8 +33,11 @@ import sys
 work = pathlib.Path(sys.argv[1])
 root = pathlib.Path.cwd()
 
+# 排除开发辅助文件，只打包 fnOS 应用所需内容
+exclude = {'dist', '.github', 'build.sh', 'icon_gen.py', 'README.md'}
+
 for entry in sorted(root.iterdir()):
-    if entry.name == 'dist':
+    if entry.name in exclude:
         continue
     if entry.is_dir():
         shutil.copytree(entry, work / entry.name)
@@ -52,6 +55,7 @@ rm -f "${fpk}"
 
 python3 - "${WORK}" "${fpk}" <<'PY'
 import pathlib
+import stat
 import sys
 import zipfile
 
@@ -65,9 +69,18 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     for p in sorted(src.rglob('*')):
         arc = str(p.relative_to(src))
         if p.is_dir():
-            z.writestr(arc + "/", b"")
+            # 目录 0755
+            zi = zipfile.ZipInfo(arc + "/")
+            zi.external_attr = (stat.S_IFDIR | 0o755) << 16
+            z.writestr(zi, b"")
         else:
-            z.writestr(arc, p.read_bytes())
+            zi = zipfile.ZipInfo(arc)
+            # cmd/ 下的生命周期脚本必须可执行（fnOS 安装校验 chmod +x cmd/*）
+            if p.parent.name == "cmd":
+                zi.external_attr = (stat.S_IFREG | 0o755) << 16
+            else:
+                zi.external_attr = (stat.S_IFREG | 0o644) << 16
+            z.writestr(zi, p.read_bytes())
 
 print("wrote", out)
 PY
