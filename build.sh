@@ -33,8 +33,8 @@ import sys
 work = pathlib.Path(sys.argv[1])
 root = pathlib.Path.cwd()
 
-# 排除开发辅助文件，只打包 fnOS 应用所需内容
-exclude = {'dist', '.github', 'build.sh', 'icon_gen.py', 'README.md'}
+# 排除开发辅助文件与版本库，只打包 fnOS 应用所需内容
+exclude = {'dist', '.git', '.github', 'build.sh', 'icon_gen.py', 'README.md'}
 
 for entry in sorted(root.iterdir()):
     if entry.name in exclude:
