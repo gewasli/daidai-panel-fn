@@ -1,83 +1,76 @@
-name: Build daidai-panel-fn .fpk
+#!/usr/bin/env bash
+# 构建 daidai-panel-fn 的 fnOS 应用包（.fpk）。
+#
+# 输出：dist/daidai-panel-fn-{version}.fpk（用于 GitHub Release 与 fndepot 源）
+# 行为：
+#   - 拉取 manifest 里的 version（默认 1.0.0）
+#   - 如设置 BUILD_VERSION 则覆写 manifest 的 version
+#   - 打包整个项目目录成一个 .fpk（fnOS fndepot 接受的 app 包格式）
 
-on:
-  push:
-    branches: [ main ]
-    tags: [ 'v*.*.*' ]
-  workflow_dispatch:
-    inputs:
-      version:
-        description: '发布版本号（如 1.0.0）'
-        required: false
-        default: ''
+set -euo pipefail
+cd "$(dirname "$0")"
 
-permissions:
-  contents: read
-  issues: write
-  packages: read
+mkdir -p dist
 
-env:
-  FPK_NAME: daidai-panel-fn
+VERSION="${BUILD_VERSION:-1.0.0}"
+if [[ -z "${BUILD_VERSION:-}" ]]; then
+  VERSION="$(grep -E '^version=' manifest | head -n1 | cut -d= -f2-)"
+fi
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.setver.outputs.version }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+if [[ -n "${BUILD_VERSION:-}" ]] && [[ "${BUILD_VERSION}" != "${VERSION}" ]]; then
+  sed -i "s/^version=.*/version=${BUILD_VERSION}/" manifest
+fi
 
-      - name: Set version
-        id: setver
-        run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
-            echo "VERSION=${{ github.event.inputs.version }}" >> "$GITHUB_ENV"
-          elif [[ ${{ github.ref_type == 'tag' && github.ref_name } == v* ]]; then
-            V="${{ github.ref_name }}"
-            echo "version=${V#v}" >> "$GITHUB_OUTPUT"
-            echo "VERSION=${{ github.ref_name }}" >> "$GITHUB_ENV"
-          else
-            VERSION=$(grep -E '^version=' manifest | head -n1 | cut -d= -f2-)
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-            echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          fi
-          echo "Using version=$VERSION"
+WORK="dist/daidai-panel-fn-${VERSION}"
+rm -rf "${WORK}"
+mkdir -p "${WORK}"
 
-      - name: Build .fpk
-        run: BUILD_VERSION="${{ env.VERSION }}" bash build.sh
+python3 - "${WORK}" <<'PY'
+import pathlib
+import shutil
+import sys
 
-      - name: Upload artifact
-        if: github.event_name != 'push'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.FPK_NAME }}.fpk
-          path: dist/daidai-panel-fn-${{ env.VERSION }}.fpk
+work = pathlib.Path(sys.argv[1])
+root = pathlib.Path.cwd()
 
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ env.FPK_NAME }}.fpk
-          path: dist
+for entry in sorted(root.iterdir()):
+    if entry.name == 'dist':
+        continue
+    if entry.is_dir():
+        shutil.copytree(entry, work / entry.name)
+    else:
+        shutil.copy2(entry, work / entry.name)
 
-      - name: Create GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "daidai-panel-fn ${{ github.ref_name }}" \
-            --generate-notes \
-            "dist/${{ env.FPK_NAME }}-${{ needs.build.outputs.version }}.fpk"
+for junk in work.rglob('*.pyc'):
+    junk.unlink()
+for junk in work.rglob('.DS_Store'):
+    junk.unlink()
+PY
 
-      - name: Upload Release asset
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload "${{ github.ref_name }}" \
-            "dist/${{ env.FPK_NAME }}-${{ needs.build.outputs.version }}.fpk"
+fpk="dist/daidai-panel-fn-${VERSION}.fpk"
+rm -f "${fpk}"
+
+python3 - "${WORK}" "${fpk}" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+src = pathlib.Path(sys.argv[1])
+out = pathlib.Path(sys.argv[2])
+
+if out.exists():
+    out.unlink()
+
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for p in sorted(src.rglob('*')):
+        rel = p.relative_to(src)
+        arc = str(rel)
+        if p.is_dir():
+            z.writestr(arc + "/", b"")
+        else:
+            z.writestr(arc, p.read_bytes())
+
+print("wrote", out)
+PY
+
+ls -l "${fpk}"
