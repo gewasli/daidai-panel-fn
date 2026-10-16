@@ -112,9 +112,20 @@ def write_png(path, size, rows):
 
 
 if __name__ == "__main__":
-    out = sys.argv[1]
     import os
+
+    args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    force = "--force" in sys.argv
+    out = args[0] if args else "."
     os.makedirs(out, exist_ok=True)
+
+    # 默认不覆盖已存在的图标：仓库里提交的是呆呆面板真实 logo，
+    # 而本脚本生成的是占位图（蓝色渐变 + 白色 D）。CI 里 build.sh 之前
+    # 会跑 `python3 icon_gen.py .`，若默认覆盖会把真实 logo 冲掉。
+    # 需要重新生成占位图时显式加 --force。
     for s in (64, 256):
         path = f"{out}/ICON.PNG" if s == 64 else f"{out}/ICON_256.PNG"
+        if os.path.exists(path) and not force:
+            print(f"  {path}  已存在，跳过（需要覆盖请加 --force）")
+            continue
         write_png(path, s, _render(s))
