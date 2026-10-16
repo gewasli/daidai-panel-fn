@@ -1,65 +1,104 @@
-# daidai-panel-fn <!-- omit in toc -->
+# daidai-panel-fn
 
-飞牛 fnOS 上的「呆呆面板」原生应用（.fnOS .fpk 包）。
+飞牛 fnOS 上的「呆呆面板」原生应用（`.fpk` 包）。
 
-本项目把 **呆呆面板**以 **独立 Docker 项目**方式打包，运行在 fnOS 应用中心：
-- 与你**现有的 daidai 面板隔离**（容器名、暴露端口、数据卷全部独立），内部更新/升级不会影响主面板。
-- 面板本体通过 `linzixuanzz/daidai-panel` 镜像提供（Docker 项目，不由本包内嵌）。
-- 必须以 **root** 运行（Docker 项目推荐 root），否则「Linux 系统依赖」不能安装，npm/pip 的 HOME 也不一定可写。
+把 **呆呆面板**以 **独立 Docker 项目**的方式打包进 fnOS 应用中心：
+
+- 容器名、端口、数据目录全部独立，**内部更新/升级不影响你原有的面板**；
+- 面板本体由 `linzixuanzz/daidai-panel` 镜像提供，本包只负责安装、托管、数据目录；
+- 容器**以 root 运行**——这是刻意的：Linux 系统依赖（`apt-get` / `apk`）必须 root，
+  且 npm/pip 需要可写的 `HOME`，非 root 时连 `npm ls` 都会失败。
 
 ## 目录结构
 
 ```text
 daidai-panel-fn/
-├── manifest                 # fnOS 应用清单（appname 必须稳定）
+├── manifest                    # 应用清单（appname 必须稳定）
 ├── config/
-│   ├── privilege            # 最小权限：包用户运行（不用 root 长期跑服务）
-│   └── resource             # 声明 docker-project（app/docker 目录）
+│   ├── privilege               # run-as: root
+│   └── resource                # docker-project + data-share 声明
 ├── app/
 │   ├── docker/
-│   │   └── docker-compose.yaml   # 独立 daidai 容器：按 PANEL_PORT 映射，数据在 ./data
+│   │   └── docker-compose.yaml # 容器定义（端口 / 数据卷 / 环境变量）
 │   └── ui/
-│       └── config             # 桌面入口（type=url，host 端口 5701）
-│           └── images/
-│               ├── icon_64.png
-│               └── icon_256.png
+│       ├── config              # 桌面入口（type=url, port 5700）
+│       └── images/             # icon_64.png / icon_256.png
 ├── cmd/
-│   └── main                 # start/stop/status 生命周期（TRIM_APPDEST 驱动）
-├── wizard/                  # 安装/升级/配置向导（按需补充）
-├── ICON.PNG / ICON_256.PNG  # 应用图标（64/256）
-├── icon_gen.py              # 生成图标（纯标准库，不需要 PIL）
-└── build.sh                 # 打 .fpk
+│   ├── main                    # start / stop / status
+│   └── *_init, *_callback      # 安装 / 升级 / 卸载 / 配置 钩子
+├── wizard/                     # 安装向导（可为空）
+├── ICON.PNG / ICON_256.PNG     # 应用图标
+└── build.sh                    # 打 .fpk
 ```
 
 ## 构建
 
 ```bash
-# 1) 生成图标（可选；本项目用生成的占位图）
-python3 icon_gen.py .
-
-# 2) 打包
 ./build.sh
 # 输出：dist/daidai-panel-fn-1.0.0.fpk
 ```
 
-## 在 fnOS 上安装
+`build.sh` 优先调用官方 `fnpack build`；若环境里没有 `fnpack`（例如 GitHub
+Actions 的干净 runner），自动回退到内置的纯 Python 打包器，产物格式完全一致。
 
-1. 把 `daidai-panel-fn-*.fpk` 拖到 **应用中心 → 应用管理 → 导入**，或用
-   `appcenter-cli install-fpk daidai-panel-fn-1.0.0.fpk`。
-2. 安装完成后，在应用中心看到「呆呆面板」入口，打开地址是
-   `http://宿主机IP:5701`。
-3. 如要自动升级：把本 `dist/*.fpk` 放进你自己的 **fndepot 自定义源**，fnOS 会按源更新。
+### ⚠️ 关于 `.fpk` 格式
 
-## 升级 / 数据如何保证不丢失
+`.fpk` 必须是 **gzip 压缩的 tar**，**不是 zip**。早先版本用 `zipfile` 打包，
+应用中心解析不了，`app install-fpk` 会直接报：
 
-- 数据全在 `app/docker/data`（挂载到容器 `/app/Dumb-Panel`），外置卷；
-- 升级只替换容器镜像，不动 `data`，所以 SQLite、依赖、脚本、登录态都保留。
-- 若要彻底重装：`docker compose down` 后再 `up -d`，或删除旧 fpk 并安装新版本；
-  只会丢容器，但数据卷保持。
+```
+app-center request POST /app-center/v1/download/upload failed: ({"code":10111,"msg":""})
+```
 
-## 当前已知假定
+包内结构：
 
-- `appname=daidai-panel-fn` 需保持稳定；如要改名，必须同时改 `manifest`、`cmd/main` 里的
-  `desktop_applaunchname`、`config/resource`、`cmd/main` 里所有 `daidai-panel-fn` 字符串。
-- 图标是按「D」形状的占位图；如你有官方 logo，请替换 `ICON.PNG` / `ICON_256.PNG`
- （规格：64×64 / 256×256，sRGB，单文件 ≤ 1024 KB）。
+```text
+daidai-panel-fn.fpk   (gzip tar)
+├── manifest
+├── ICON.PNG / ICON_256.PNG
+├── cmd/              (main + 各 *_init / *_callback)
+├── config/           (privilege, resource)
+├── wizard/
+└── app.tgz           (gzip tar；内容 = app/ + config/，即安装后的 target/)
+```
+
+## 安装
+
+```bash
+# 把包放到 fnOS 能读到的位置，然后：
+trim-cli file upload /vol1/appcenter-downloads/upload ./dist/daidai-panel-fn-1.0.0.fpk --overwrite replace --yes
+trim-cli app install-fpk --remote-path /vol1/appcenter-downloads/upload/daidai-panel-fn-1.0.0.fpk --volume-id 1 --yes
+```
+
+也可以在 **应用中心 → 手动安装** 里直接选 `.fpk`。
+
+安装后访问 `http://<宿主机IP>:5700`。
+
+## 数据
+
+数据落在 fnOS 的 data-share：
+
+```text
+/var/apps/daidai-panel-fn/shares/daidai-panel-fn/data   （→ /vol1/@appshare/daidai-panel-fn/data）
+```
+
+挂载进容器为 `/app/Dumb-Panel`，里面有 `daidai.db`、`.jwt_secret`、`deps/`、
+`logs/`、`scripts/` 等。**升级只替换应用目录，不会碰这个 share**，所以 SQLite、
+依赖、脚本、登录态全部保留。
+
+> 该目录属主是 root 且权限为 `700`。用普通用户直接 `cp` 会被拒绝；
+> 需要写入时用 Docker 以 root 操作，例如：
+>
+> ```bash
+> docker run --rm -v /vol1/@appshare/daidai-panel-fn/data:/dest -v /tmp:/backup alpine \
+>   sh -c 'tar xzf /backup/daidai-backup.tar.gz -C /dest --strip-components=1'
+> ```
+
+## 从旧面板迁移数据
+
+1. 停掉旧容器，打包旧数据目录（形如 `/vol2/1000/daidai/Dumb-Panel`）；
+2. 安装本应用，等它首次启动完成（会生成一份全新的空库）；
+3. 停掉本应用，用上面的 `docker run` 方式把备份解包覆盖进 data 目录；
+4. 启动本应用。
+
+`PANEL_UPDATE_MANAGER=disabled` 已关闭面板自带的 watchtower 自更新，避免它去动别的容器。

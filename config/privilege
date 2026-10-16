@@ -1,7 +1,6 @@
 {
-  "defaults": {
-    "run-as": "package"
-  },
-  "username": "daidai-panel-fn_user",
-  "groupname": "daidai-panel-fn_group"
+    "defaults":
+    {
+        "run-as": "root"
+    }
 }

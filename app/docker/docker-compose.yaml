@@ -1,12 +1,15 @@
 # ============================================================
-# 呆呆面板 —— fnOS 独立 Docker 应用（根用户运行）
+# 呆呆面板 —— fnOS 原生应用（Docker 项目，容器内以 root 运行）
+#
 # 说明：
-#   1. 不设 PUID/PGID，因此容器以 root 运行。Docker 项目推荐 root：
-#      「Linux 系统依赖」（apt/apk）必须 root；npm/pip 也需要 HOME 可写。
-#   2. 数据卷挂到 ./data（相对于本文件），与“现有 daidai 面板”隔离。
-#      内部更新/升级容器不会碰原有面板的 SQLite、依赖、脚本。
-#   3. 关闭自动 watchtower（PANEL_UPDATE_MANAGER=disabled），避免升级时
-#      整组随缓存重启导致“外部更新影响本项目”。
+#   1. 不设 PUID/PGID，容器以 root 运行。这是关键：
+#      - Linux 系统依赖（apt-get / apk）必须 root；
+#      - npm / pip 需要 HOME 可写，非 root 时连 npm ls 都会失败。
+#   2. 数据目录使用 fnOS 的 data-share，落在
+#      /var/apps/daidai-panel-fn/shares/daidai-panel-fn/data
+#      升级应用只替换程序目录，不会碰这个 share，因此内部更新不影响数据。
+#   3. PANEL_UPDATE_MANAGER=disabled：关闭面板自带的 watchtower 自更新，
+#      避免它去动别的容器。
 # ============================================================
 name: daidai-panel-fn
 
@@ -16,14 +19,11 @@ services:
     container_name: daidai-panel-fn
     restart: unless-stopped
     ports:
-      - "${PANEL_PORT:-5701}:5700"   # 宿主机端口:容器内 Nginx 端口
+      - "5700:5700"
     volumes:
-      - ./data:/app/Dumb-Panel      # 数据：SQLite、依赖、脚本、日志，独立于主面板
+      - "/var/apps/daidai-panel-fn/shares/daidai-panel-fn/data:/app/Dumb-Panel"
     environment:
       - TZ=Asia/Shanghai
       - CONTAINER_NAME=daidai-panel-fn
       - IMAGE_NAME=linzixuanzz/daidai-panel:latest
       - PANEL_UPDATE_MANAGER=disabled
-      # 如必须降权，取消下两行注释；但这会导致 Linux 系统依赖无法安装（需要 root）
-      # - PUID=1000
-      # - PGID=1000
