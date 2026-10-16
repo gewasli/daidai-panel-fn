@@ -1,56 +1,49 @@
-#!/bin/sh
+#!/bin/bash
 # daidai-panel-fn 生命周期入口
 #
-# Docker 项目由 fnOS 应用中心触发 start/stop。
-# TRIM_APPDEST 指向安装后的应用目录（/var/apps 内由系统分配，进程取其环境变量）。
-# 服务托管在 app/docker/docker-compose.yaml 里（独立于现有 daidai 面板）。
+# Docker 项目由 fnOS 应用中心（docker-project 资源）负责 start/stop，
+# 本脚本只做状态上报，必须与 appcenter 的判断保持一致。
+#
+# 目录约定（关键，踩过坑）：
+#   fnOS 安装时会**把 app.tgz 里的 app/ 内容平铺到 TRIM_APPDEST 根目录**，
+#   所以 compose 文件在 ${TRIM_APPDEST}/docker/docker-compose.yaml，
+#   而不是 ${TRIM_APPDEST}/app/docker/docker-compose.yaml。
+#   路径写错会导致 status 恒为 3（未运行）→ 应用中心认为启动失败 →
+#   状态卡在 start、桌面入口/图标不注册。
 
-set -u
+FILE_PATH="${TRIM_APPDEST}/docker/docker-compose.yaml"
 
-APP_ROOT="${TRIM_APPDEST:-}"
-if [ -z "$APP_ROOT" ]; then
-  echo "ERROR: TRIM_APPDEST is not set; the application directory was not provided." >&2
-  exit 1
-fi
+is_docker_running () {
+    DOCKER_NAME=""
 
-DOCKER_DIR="$APP_ROOT/app/docker"
-COMPOSE_FILE="$DOCKER_DIR/docker-compose.yaml"
+    if [ -f "$FILE_PATH" ]; then
+        DOCKER_NAME=$(grep "container_name" "$FILE_PATH" | awk -F ':' '{print $2}' | xargs)
+    fi
 
-usage() {
-  echo "usage: $0 {start|stop|status}" >&2
-}
-
-cmd_start() {
-  if [ ! -f "$COMPOSE_FILE" ]; then
-    echo "ERROR: missing docker-compose.yaml ($COMPOSE_FILE)" >&2
-    exit 1
-  fi
-  mkdir -p "$APP_ROOT/data"
-
-  # 外部镜像按 ENV IMAGE_NAME 拉取/重建；必须 root 运行（见 README）
-  ( cd "$DOCKER_DIR" && export PANEL_PORT=5701 && docker compose up -d )
-}
-
-cmd_stop() {
-  ( cd "$DOCKER_DIR" && docker compose down )
-}
-
-cmd_status() {
-  if [ ! -f "$COMPOSE_FILE" ]; then
-    exit 3
-  fi
-  if ( cd "$DOCKER_DIR" && docker compose ps --services --filter "status=running" 2>/dev/null | grep -qx "daidai-panel" ); then
-    exit 0
-  fi
-  exit 3
+    if [ -n "$DOCKER_NAME" ]; then
+        docker inspect "$DOCKER_NAME" 2>/dev/null | grep -q '"Status": "running",' || exit 1
+        return 0
+    fi
+    return 1
 }
 
 case "${1:-}" in
-  start)  cmd_start ;;
-  stop)   cmd_stop ;;
-  status) cmd_status ;;
-  *)
-    usage
+start)
+    # docker 应用由应用中心拉起
+    exit 0
+    ;;
+stop)
+    # docker 应用由应用中心停止
+    exit 0
+    ;;
+status)
+    if is_docker_running; then
+        exit 0
+    else
+        exit 3
+    fi
+    ;;
+*)
     exit 1
     ;;
 esac
