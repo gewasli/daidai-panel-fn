@@ -2,22 +2,28 @@
 # 呆呆面板 —— fnOS 原生应用（Docker 项目，容器内以 root 运行）
 #
 # 说明：
-#   1. 不设 PUID/PGID，容器以 root 运行。这是关键：
+#   1. 镜像用 Debian 版（:3.3.6-debian），不用 Alpine 版。这是关键：
+#      - Playwright / Chromium 官方只发 glibc 构建，Alpine(musl) 里根本跑不了；
+#      - python playwright 包只发 manylinux，Alpine 上连装都装不上；
+#      - 面板「一键安装 Playwright 运行环境」也只支持 Debian 12 镜像。
+#   2. 不设 PUID/PGID，容器以 root 运行。这是关键：
 #      - Linux 系统依赖（apt-get / apk）必须 root；
 #      - npm / pip 需要 HOME 可写，非 root 时连 npm ls 都会失败。
-#   2. 数据目录使用 fnOS 的 data-share，落在
+#   3. 数据目录使用 fnOS 的 data-share，落在
 #      /var/apps/daidai-panel-fn/shares/daidai-panel-fn/data
 #      升级应用只替换程序目录，不会碰这个 share，因此内部更新不影响数据。
-#   3. PANEL_UPDATE_MANAGER=disabled：关闭面板自带的 watchtower 自更新，
+#   4. shm_size: 1gb —— Chromium 在默认 64MB /dev/shm 下极易崩溃。
+#   5. PANEL_UPDATE_MANAGER=disabled：关闭面板自带的 watchtower 自更新，
 #      避免它去动别的容器。
 # ============================================================
 name: daidai-panel-fn
 
 services:
   daidai-panel:
-    image: linzixuanzz/daidai-panel:latest
+    image: linzixuanzz/daidai-panel:3.3.6-debian
     container_name: daidai-panel-fn
     restart: unless-stopped
+    shm_size: 1gb
     ports:
       - "5700:5700"
     volumes:
@@ -25,5 +31,5 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - CONTAINER_NAME=daidai-panel-fn
-      - IMAGE_NAME=linzixuanzz/daidai-panel:latest
+      - IMAGE_NAME=linzixuanzz/daidai-panel:3.3.6-debian
       - PANEL_UPDATE_MANAGER=disabled
