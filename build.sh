@@ -64,6 +64,12 @@ SKIP_DIRS = {'dist', '.git', '.github'}
 
 def add_tree(tf, src_root, arc_prefix='', skip_top=frozenset()):
     """把 src_root 下的内容按相对路径写进 tar。"""
+    if arc_prefix:
+        # 显式写出前缀目录本身，与 fnpack 的产物保持一致
+        ti = tarfile.TarInfo(str(pathlib.PurePosixPath(arc_prefix)))
+        ti.type = tarfile.DIRTYPE
+        ti.mode = src_root.stat().st_mode & 0o777
+        tf.addfile(ti)
     for p in sorted(src_root.rglob('*')):
         rel = p.relative_to(src_root)
         if rel.parts and rel.parts[0] in skip_top:
@@ -88,12 +94,19 @@ def add_tree(tf, src_root, arc_prefix='', skip_top=frozenset()):
 
 
 # 1) app.tgz = app/ 内容 + config/ 内容（即安装后的 target/ 目录）
+#    注意前缀：app/ 的内容平铺到根（docker/、ui/），
+#    而 config/ 必须保留目录名（config/privilege、config/resource）——
+#    fnOS 安装后 target/ 的布局正是 config/{privilege,resource} + docker/ + ui/。
+#    之前这里漏了 config 前缀，导致 CI（无 fnpack，走内置打包器）产出的包里
+#    privilege/resource 落在根目录，安装后 target/config/ 为空、权限声明失效。
 buf = io.BytesIO()
 with tarfile.open(fileobj=buf, mode='w:gz') as tf:
-    for sub in ('app', 'config'):
-        d = root / sub
-        if d.is_dir():
-            add_tree(tf, d)
+    d = root / 'app'
+    if d.is_dir():
+        add_tree(tf, d)
+    d = root / 'config'
+    if d.is_dir():
+        add_tree(tf, d, arc_prefix='config')
 app_tgz = buf.getvalue()
 
 # 2) 外层 .fpk = gzip tar
