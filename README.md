@@ -35,7 +35,7 @@ daidai-panel-fn/
 
 ```bash
 ./build.sh
-# 输出：dist/daidai-panel-fn-1.0.0.fpk
+# 输出：dist/daidai-panel-fn-1.0.1.fpk
 ```
 
 `build.sh` 优先调用官方 `fnpack build`；若环境里没有 `fnpack`（例如 GitHub
@@ -66,8 +66,8 @@ daidai-panel-fn.fpk   (gzip tar)
 
 ```bash
 # 把包放到 fnOS 能读到的位置，然后：
-trim-cli file upload /vol1/appcenter-downloads/upload ./dist/daidai-panel-fn-1.0.0.fpk --overwrite replace --yes
-trim-cli app install-fpk --remote-path /vol1/appcenter-downloads/upload/daidai-panel-fn-1.0.0.fpk --volume-id 1 --yes
+trim-cli file upload /vol1/appcenter-downloads/upload ./dist/daidai-panel-fn-1.0.1.fpk --overwrite replace --yes
+trim-cli app install-fpk --remote-path /vol1/appcenter-downloads/upload/daidai-panel-fn-1.0.1.fpk --volume-id 1 --yes
 ```
 
 也可以在 **应用中心 → 手动安装** 里直接选 `.fpk`。
